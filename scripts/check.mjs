@@ -1,6 +1,8 @@
 import {readFile} from 'node:fs/promises';
 const html=await readFile('src/index.html','utf8'),js=await readFile('src/game.js','utf8');
 const must=[/UNICORN ASCENDING/,/nearestHook/,/hookReady/,/SPECTRUM/,/localStorage\.uaBest/,/window\.UA/,/ShiftLeft/,/ArrowRight/,/function cancelHook\(\)/,/function suspend\(\)/,/visibilitychange/,/suspended/,/STEP=1\/120/,/MAX_STEPS=8/,/while\(acc>=STEP&&n<MAX_STEPS\)/,/fixedHz:120/,/droppedFrames/];for(const x of must)if(!x.test(js))throw Error(`missing gameplay contract ${x}`);
+if(!/width:min\(100vw,150vh\)/.test(html)||!/height:min\(100vh,66\.667vw\)/.test(html))throw Error('canvas must preserve the 960x640 gameplay aspect ratio');
+if(/canvas\{[^}]*width:100vw[^}]*height:100vh/.test(html))throw Error('canvas must not stretch physics geometry to arbitrary viewport ratios');
 if(/addEventListener\('blur',\(\)=>[^\n]*release\(\)/.test(js))throw Error('focus loss must cancel Horn Hook without a scored release');
 if(/function frame\([^)]*\)\{[^}]*update\(dt\)/.test(js))throw Error('render-frame dt must not directly own gameplay simulation');
 if(/https?:\/\//.test(html+js)||/\bfetch\s*\(|XMLHttpRequest|WebSocket/.test(js))throw Error('contest build must be offline and self-contained');
