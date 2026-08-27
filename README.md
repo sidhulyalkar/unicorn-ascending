@@ -60,6 +60,34 @@ A compact xorshift PRNG generates:
 
 The starting platform is broad and safe. Higher platforms progressively require more lateral commitment, creating increasingly useful Horn Hook decisions without introducing a second procedural system just for difficulty.
 
+### 120 Hz gameplay authority
+
+Rendering is free-running, but gameplay no longer integrates directly from browser frame time. The simulation uses a fixed:
+
+```text
+1 / 120 second step
+```
+
+with a bounded eight-step catch-up budget per rendered frame. This matters because a momentum game should not become easier on a 30 Hz render loop simply because a large frame delta was clipped before gravity, movement, or Grey pressure were integrated.
+
+The fixed-step contract gives the important systems one shared clock:
+
+```text
+input state
+    ↓
+120 Hz simulation
+    ├─ movement / gravity
+    ├─ curved landing collision
+    ├─ Horn spring and release timing
+    ├─ Grey pressure
+    ├─ Spectrum windows
+    └─ particles / score state
+    ↓
+free-running Canvas render
+```
+
+If a browser stalls badly enough to exceed the catch-up budget, the game drops accumulated backlog instead of entering a spiral of death. The debug surface reports `fixedHz`, total `simSteps`, and `droppedFrames` so qualification can distinguish ordinary rendering cadence from simulation overload.
+
 ## Horn Hook authority
 
 The Horn Hook is intentionally constrained.
@@ -90,7 +118,7 @@ This turns the mechanic into a route bridge rather than an infinite vertical loc
 
 ## Focus-safe input authority
 
-Browser focus is now treated as infrastructure state, not gameplay input.
+Browser focus is treated as infrastructure state, not gameplay input.
 
 If the tab, window, or embedded game loses focus while a Horn Hook is active:
 
@@ -100,6 +128,7 @@ If the tab, window, or embedded game loses focus while a Horn Hook is active:
 - no release velocity is injected;
 - held movement keys are cleared;
 - the simulation suspends until focus returns;
+- the fixed-step accumulator is cleared so stale wall-clock time cannot burst into catch-up physics;
 - the spent Hook remains spent, preventing focus churn from becoming a free recharge exploit.
 
 The same safety path is wired to document visibility changes. This is especially important for embedded play, browser shortcuts, tab switching, and automated qualification.
@@ -169,14 +198,14 @@ The contest runtime deliberately avoids a framework.
 │   ├── check.mjs           # offline source/invariant checks
 │   ├── pack.mjs            # deterministic contest ZIP builder + size gate
 │   ├── serve.mjs           # dependency-free static development server
-│   └── smoke.mjs           # real Chromium gameplay/focus qualification
+│   └── smoke.mjs           # real Chromium gameplay/focus/clock qualification
 ├── .github/workflows/
 │   └── ci.yml              # source, package-size, and browser gates
 ├── package.json
 └── README.md
 ```
 
-The readable runtime exposes a small `window.UA` debug surface strictly for qualification. It reports mode, position, velocity, Hook state, platform count, score, best score, Spectrum, Grey position, and suspension state. Production mechanics do not depend on the debug API.
+The readable runtime exposes a small `window.UA` debug surface strictly for qualification. It reports mode, position, velocity, Hook state, platform count, score, best score, Spectrum, Grey position, suspension state, fixed-step frequency, simulation steps, and dropped catch-up frames. Production mechanics do not depend on the debug API.
 
 ## js13k size discipline
 
@@ -225,7 +254,7 @@ The repository uses several deliberately different gates.
 
 ### 1. Source contracts
 
-`scripts/check.mjs` verifies that core gameplay state and control paths still exist, the entry remains offline/self-contained, and focus loss cannot regress to a normal scored Hook release.
+`scripts/check.mjs` verifies that core gameplay state and control paths still exist, the entry remains offline/self-contained, focus loss cannot regress to a normal scored Hook release, and render-frame delta time cannot silently regain authority over gameplay simulation.
 
 ### 2. Deterministic package build
 
@@ -237,19 +266,19 @@ The build fails above 13,312 bytes. This prevents a polished local build from qu
 
 ### 4. Real-browser smoke
 
-The Chromium harness starts a run through keyboard input, proves horizontal movement, primes a deterministic legal prism, proves Hook acquisition/release, and then exercises the focus-loss contract while a second Hook is live.
+The Chromium harness starts a run through keyboard input, proves the 120 Hz simulation is advancing, proves horizontal movement, primes a deterministic legal prism, proves Hook acquisition/release, rejects a second Shift lease before recharge, and then exercises focus loss while another Hook is live.
 
-The focus test asserts that blur:
+The focus test asserts that blur produces:
 
 ```text
 active Hook → cancelled Hook
 score       → unchanged
 Spectrum    → unchanged
 velocity    → unchanged
-simulation  → suspended
+simSteps    → frozen while suspended
 ```
 
-It then restores focus and proves simulation authority resumes.
+It then restores focus and proves fixed-step simulation authority resumes.
 
 ## Design principles
 
@@ -258,6 +287,7 @@ It then restores focus and proves simulation authority resumes.
 - **Restarts should be immediate.** The learning loop lives between attempt and retry.
 - **Skill lives in the player.** There is no permanent movement-stat progression.
 - **World rules stay deterministic.** Failure does not secretly cause adaptive difficulty.
+- **Simulation rules stay frame-rate independent.** Render cadence does not own gravity, Hook timing, or Grey pressure.
 - **The HUD stays small.** The sky and route geometry should own the screen.
 - **Browser state is not gameplay state.** Blur, visibility changes, and focus churn cannot create moves.
 - **Every byte should earn player value.** Shipping constraints are a design instrument, not merely a final compression chore.
