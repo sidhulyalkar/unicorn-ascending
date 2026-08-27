@@ -1,0 +1,3 @@
+import {createServer} from 'node:http';import {readFile,stat} from 'node:fs/promises';import {extname,join,normalize} from 'node:path';
+const root=process.argv[2]||'dist',port=+(process.env.PORT||4173),types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.json':'application/json'};
+createServer(async(req,res)=>{try{const u=new URL(req.url,'http://x'),p=u.pathname==='/'?'index.html':u.pathname.slice(1),file=normalize(join(root,p));if(!file.startsWith(normalize(root)))throw 0;await stat(file);res.setHeader('content-type',types[extname(file)]||'application/octet-stream');res.end(await readFile(file))}catch{res.statusCode=404;res.end('not found')}}).listen(port,'127.0.0.1',()=>console.log(`Unicorn Ascending on http://127.0.0.1:${port}`));

@@ -1,0 +1,47 @@
+name: Unicorn Ascending js13k CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: unicorn-ascending-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  contest-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Validate source and build submission ZIP
+        run: npm test
+      - name: Prove hard js13k byte ceiling
+        run: node -e "let x=require('./dist/size.json');if(x.zipBytes>13312)process.exit(1);console.log(x)"
+      - name: Install Chromium smoke engine
+        run: |
+          npm install --prefix /tmp/ua-pw --no-package-lock --no-save playwright@1.55.0
+          /tmp/ua-pw/node_modules/.bin/playwright install --with-deps chromium
+      - name: Start packed entry
+        run: |
+          mkdir -p artifacts
+          node scripts/serve.mjs dist > /tmp/ua.log 2>&1 &
+          for i in {1..30}; do curl -fsS http://127.0.0.1:4173/ >/dev/null && exit 0; sleep 1; done
+          cat /tmp/ua.log; exit 1
+      - name: Browser smoke movement and Horn Hook
+        env:
+          PLAYWRIGHT_MODULE_ROOT: /tmp/ua-pw/node_modules/playwright
+        run: npm run smoke
+      - if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: unicorn-ascending-contest-build
+          path: |
+            dist/unicorn-ascending.zip
+            dist/size.json
+            artifacts/unicorn-ascending-smoke.png
+          if-no-files-found: warn
