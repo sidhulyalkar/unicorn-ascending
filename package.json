@@ -1,0 +1,15 @@
+{
+  "name":"unicorn-ascending",
+  "version":"0.1.0",
+  "private":true,
+  "type":"module",
+  "scripts":{
+    "check":"node scripts/check.mjs",
+    "build":"node scripts/pack.mjs",
+    "test":"npm run check && npm run build",
+    "dev":"node scripts/serve.mjs src",
+    "preview":"node scripts/serve.mjs dist",
+    "smoke":"node scripts/smoke.mjs"
+  },
+  "engines":{"node":">=20"}
+}
