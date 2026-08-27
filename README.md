@@ -1,317 +1,199 @@
-# Unicorn Ascending
+# Unicorn Ascending: Prismwild
 
-**A tiny vertical momentum climber about running on rainbows, hooking prism stars with a magical horn, and staying ahead of the Grey.**
+A js13kGames 2026 momentum-action climber built around one rule:
 
-Unicorn Ascending is a browser arcade game built for the **js13kGames 2026** theme, **Unicorns and Rainbows**. Its design starts from one simple rule: the Horn Hook should redirect movement, not replace it. The game is therefore less about grappling to arbitrary points and more about reading a route, building horizontal momentum, spending one hook, and converting that arc into a higher landing.
+> **Velocity is traversal, offense, defense, and style.**
 
-The entire contest game is procedural Canvas 2D and WebAudio. There are no image, font, music, framework, runtime-package, or network dependencies in the shipped entry.
+This branch is an experimental redesign of the qualified vertical climber on `main`. The old build remains intact while `feat/momentum-world` tests a much larger competition concept: remove the side walls, turn the 960×640 canvas into a moving camera over a broad world, and make the Horn Hook the center of both traversal and combat.
 
 ## Core loop
 
 ```text
-run on a rainbow
-       ↓
-jump with momentum
-       ↓
-hold Shift to hook the nearest legal prism
-       ↓
-shape the swing with A / D
-       ↓
-release Shift to redirect
-       ↓
-land on a genuinely higher rainbow
-       ↓
-Horn Hook recharges
+explore a branching rainbow route
+        ↓
+build speed by running / jumping / hooking
+        ↓
+convert velocity into a Horn strike or Comet Dive
+        ↓
+defeat enemies without stopping
+        ↓
+kill / new landing / prism shard recharges Horn authority
+        ↓
+build Spectrum and push back the Grey
+        ↓
+climb through three sky regions to the Crown
+        ↓
+defeat the Color Eater
 ```
 
-A rising storm called **the Grey** follows from below. Hesitation costs vertical space, but the early ascent is deliberately forgiving enough to teach the movement vocabulary before the route becomes more lateral.
+The important design constraint is that combat must never become a separate stop-and-fight mode. Enemies are movement geometry: targets to break through, rebound from, pull, orbit, dodge, or use as temporary Hook anchors.
 
 ## Controls
 
 | Input | Action |
 | --- | --- |
-| `A` / `D` | Run left / right |
-| `←` / `→` | Alternate movement controls |
-| `Space` | Jump, start a run, or restart after game over |
-| Hold `Shift` | Acquire and hold the nearest eligible Horn Hook prism |
-| Release `Shift` | Release the tether and carry redirected momentum |
+| `A` / `D` or `←` / `→` | Accelerate horizontally |
+| `Space` | Jump / start / restart |
+| Hold `Shift` | Horn Hook the nearest eligible prism or enemy |
+| Release `Shift` | Release the Hook while preserving redirected momentum |
+| `S` or `↓` while airborne | Comet Dive |
 
-The control set stays intentionally small. Difficulty should come from geometry, timing, momentum, and route choice rather than a large move list.
+There is intentionally no normal attack button. Movement produces attacks.
 
-## Movement model
+## World-space redesign
 
-The player has acceleration, horizontal drag, gravity, jumping, curved-platform landing, and bounded tether forces. Rainbow art and rainbow collision are derived from the same curve instead of using an invisible rectangular floor underneath a decorative arc.
+The Canvas remains an aspect-safe 960×640 presentation surface, but it is no longer the game world. Player coordinates are not clamped to the Canvas edges. A two-axis camera follows position plus velocity look-ahead, so horizontal exploration can extend well beyond one screen while high-speed motion reveals the route ahead.
 
-The important design constraint is that player-authored velocity remains meaningful. Hook acquisition supplies a bounded pull, and release preserves and slightly amplifies the earned motion. It is not an elevator button.
+The current vertical slice creates a deterministic broad campaign route with:
 
-### Curved rainbow collision
+- a guaranteed ascending spine;
+- horizontally distant side rainbows;
+- optional prism-shard detours;
+- enemy-bearing combat routes;
+- three altitude-based visual regions;
+- a Crown platform and final boss.
 
-Each rainbow is represented by a quadratic-looking analytical arc. The renderer draws seven colored bands around that path, while collision samples the same arc function. What the player sees is therefore what the player can land on.
+The route is deliberately authored by a compact grammar rather than by unconstrained random platform soup. Future iterations can replace the current finite campaign generator with chunk-addressable world cells without changing combat or camera authority.
 
-### Deterministic generation
+## Momentum combat
 
-A compact xorshift PRNG generates:
+Enemy contact is resolved from player-authored velocity.
 
-- vertical gaps;
-- horizontal drift;
-- platform width;
-- arc height;
-- prism-anchor position.
+A sufficiently fast horn-first collision becomes an attack. Comet Dive converts downward velocity into an attack and rebounds the unicorn upward after a kill. Weak contact instead breaks flow and knocks the unicorn away, making enemies dangerous primarily because they destabilize traversal.
 
-The starting platform is broad and safe. Higher platforms progressively require more lateral commitment, creating increasingly useful Horn Hook decisions without introducing a second procedural system just for difficulty.
+High-speed kills preserve or amplify useful motion instead of forcing the player to stop.
 
-### 120 Hz gameplay authority
+### Current enemy set
 
-Rendering is free-running, but gameplay no longer integrates directly from browser frame time. The simulation uses a fixed:
+- **Greyling** — basic moving target; also a light Hook target that can be pulled.
+- **Storm Eye** — floating Hook anchor that fires slow Grey projectiles.
+- **Prismback** — armored from the front; reward for approaching from behind with real speed.
+- **Cloudram** — heavy charger; dangerous collision and useful Hook pivot.
+- **Color Eater** — Crown boss with multiple high-speed hit points.
 
-```text
-1 / 120 second step
-```
-
-with a bounded eight-step catch-up budget per rendered frame. This matters because a momentum game should not become easier on a 30 Hz render loop simply because a large frame delta was clipped before gravity, movement, or Grey pressure were integrated.
-
-The fixed-step contract gives the important systems one shared clock:
-
-```text
-input state
-    ↓
-120 Hz simulation
-    ├─ movement / gravity
-    ├─ curved landing collision
-    ├─ Horn spring and release timing
-    ├─ Grey pressure
-    ├─ Spectrum windows
-    └─ particles / score state
-    ↓
-free-running Canvas render
-```
-
-If a browser stalls badly enough to exceed the catch-up budget, the game drops accumulated backlog instead of entering a spiral of death. The debug surface reports `fixedHz`, total `simSteps`, and `droppedFrames` so qualification can distinguish ordinary rendering cadence from simulation overload.
+The implementation intentionally reuses the same distance, spring, velocity, contact, particle, and scoring machinery across these enemy roles.
 
 ## Horn Hook authority
 
-The Horn Hook is intentionally constrained.
+`main` used one Hook lease per higher-landing cycle because the game only wanted upward traversal. That rule is intentionally generalized here for a two-dimensional world.
 
-### Nearest legal prism
+A successful Hook spends the current lease. Repeated Shift presses cannot create free traversal. Horn authority is rearmed by meaningful progression events:
 
-A press searches the current world for the nearest unused prism inside the acquisition radius. The game does not silently choose a farther, more convenient target because it happens to point upward.
+- landing on a different rainbow;
+- defeating an enemy;
+- collecting a prism shard.
 
-### One lease per landing cycle
+The Hook can target both world prisms and enemies. Most targets pull the player. Greyling is deliberately light enough for the same spring machinery to pull the enemy instead.
 
-The moment a legal Hook begins, that traversal cycle is spent. Repeated Shift presses do not create extra leases.
+Focus loss remains neutral browser infrastructure state: an active Hook is cancelled without release velocity, score, Spectrum progress, or other player-authored benefit, the fixed-step accumulator is cleared, input state is reset, and simulation remains suspended until focus returns.
 
-### Higher-rainbow recharge
+## Spectrum / Prismatic Flow
 
-The Hook becomes ready again only after the unicorn lands on a rainbow that is genuinely above the floor from which the Hook was spent.
+Clean Hook releases, kills, and optional prism shards build Spectrum.
 
-```text
-Hook used
-   ↓
-Hook spent
-   ↓
-higher physical landing
-   ↓
-Hook ready
-```
-
-This turns the mechanic into a route bridge rather than an infinite vertical locomotion system.
-
-## Focus-safe input authority
-
-Browser focus is treated as infrastructure state, not gameplay input.
-
-If the tab, window, or embedded game loses focus while a Horn Hook is active:
-
-- the tether is **cancelled**, not released;
-- no Spectrum step is awarded;
-- no score is awarded;
-- no release velocity is injected;
-- held movement keys are cleared;
-- the simulation suspends until focus returns;
-- the fixed-step accumulator is cleared so stale wall-clock time cannot burst into catch-up physics;
-- the spent Hook remains spent, preventing focus churn from becoming a free recharge exploit.
-
-The same safety path is wired to document visibility changes. This is especially important for embedded play, browser shortcuts, tab switching, and automated qualification.
-
-## Spectrum mastery
-
-A deliberate release can build a seven-step **Spectrum** chain. A release is considered clean only when the Hook has been held inside the intended timing window and the unicorn has meaningful horizontal velocity.
-
-```text
-1 / 7  red
-2 / 7  orange
-3 / 7  yellow
-4 / 7  green
-5 / 7  cyan
-6 / 7  indigo
-7 / 7  violet
-```
-
-Spectrum is deliberately lightweight. The player sees the chain through HUD color, unicorn accents, trail color, particles, and a brief flash rather than a large combo dashboard.
+At seven steps the game enters a short **Prismatic Flow** state. Movement acceleration and velocity ceiling increase, Hook reach expands, high-speed combat becomes more permissive, the Grey is pushed back, and audio/visual feedback becomes brighter. The intent is to create brief expert-controlled fireworks rather than a passive stat bonus.
 
 ## The Grey
 
-The Grey is a moving world boundary rather than an enemy AI system. Its rise rate increases with altitude within a bounded range.
+The Grey remains the run's time pressure, but exploration is now allowed to buy time through mastery.
 
-That gives the game pressure with very little rules overhead:
-
-```text
-miss a line
-  ↓
-lose vertical safety
-  ↓
-recover quickly or get swallowed
-```
-
-Touching the Grey ends the run. The game stores only a local best score and offers an immediate restart.
-
-## Rendering and sound
-
-Everything is generated at runtime.
-
-### Unicorn
-
-The unicorn is composed of Canvas primitives: ellipses, circles, strokes, a horn triangle, mane/tail curves, and a velocity-dependent body tilt.
-
-### Rainbows and prisms
-
-Platforms are seven curved strokes. Hook anchors are procedural stars. The tether is a pair of lightweight line strokes.
-
-### Atmosphere
-
-The sky is a gradient with deterministic stars. The Grey is a filled storm front. Movement and clean releases produce tiny procedural particles.
-
-### Audio
-
-Short WebAudio oscillators provide jump, Hook, Spectrum, restart, and death feedback. No audio file is required.
-
-## Architecture
-
-The contest runtime deliberately avoids a framework.
+The Grey rises continuously. Efficient combat and prism-shard detours push it downward. This creates a compact exploration economy:
 
 ```text
-.
-├── src/
-│   ├── index.html          # self-contained contest shell
-│   └── game.js             # complete readable game runtime
-├── scripts/
-│   ├── check.mjs           # offline source/invariant checks
-│   ├── pack.mjs            # deterministic contest ZIP builder + size gate
-│   ├── serve.mjs           # dependency-free static development server
-│   └── smoke.mjs           # real Chromium gameplay/focus/clock qualification
-├── .github/workflows/
-│   └── ci.yml              # source, package-size, and browser gates
-├── package.json
-└── README.md
+side exploration costs time
+combat earns time
+skillful movement earns routes and score
 ```
 
-The readable runtime exposes a small `window.UA` debug surface strictly for qualification. It reports mode, position, velocity, Hook state, platform count, score, best score, Spectrum, Grey position, suspension state, fixed-step frequency, simulation steps, and dropped catch-up frames. Production mechanics do not depend on the debug API.
+Touching the Grey ends the run immediately and restarts remain fast.
+
+## Boss
+
+The current Crown encounter uses the **Color Eater**, a heavy orbiting target with five hit points. Ordinary low-speed contact is dangerous. The player must repeatedly build meaningful velocity, strike, rebound, reconnect to prisms/enemies, and attack again. Defeating it ends the run with `ASCENDED` rather than silently continuing forever.
+
+This is intentionally still a prototype boss. The next design pass should make each hit change the surrounding route so the fight becomes a final traversal exam rather than merely a moving high-speed target.
+
+## Fixed-step authority
+
+Gameplay continues to run at exactly 120 Hz with a bounded eight-step catch-up budget. Rendering is free-running. Movement, gravity, Hooks, enemy movement, projectiles, combat, Grey pressure, Spectrum state, particles, and score therefore share one authoritative clock.
+
+A severe browser stall drops stale accumulated backlog rather than allowing a spiral of death.
 
 ## js13k size discipline
 
-The final artifact is a real DEFLATE ZIP containing only the contest files. The hard ceiling is:
+The contest artifact is still generated by `scripts/pack.mjs` as a real DEFLATE ZIP containing only:
+
+```text
+index.html
+game.js
+```
+
+The hard gate remains:
 
 ```text
 13 * 1024 = 13,312 bytes
 ```
 
-`npm run build` recreates the exact package and fails if that ceiling is exceeded. CI should be treated as the source of truth for current compressed bytes and remaining headroom because gameplay work changes those numbers continuously.
+`npm test` runs source contracts and recreates the package. The build fails if the ZIP exceeds that ceiling.
 
-The project prefers **fun per byte** over code golf for its own sake. Remaining bytes are budget for better movement feel, clearer teaching, richer hazards, audio, and animation.
+This branch deliberately keeps the readable development source ungolfed while mechanics are changing. Fun is being purchased before code-golf. Once the design stabilizes we can evaluate deterministic minification, property mangling, single-file packaging, stronger DEFLATE search, and Roadroller as independent production candidates.
+
+## Qualification
+
+The branch CI now protects both the old infrastructure guarantees and the new design boundaries.
+
+Source checks require:
+
+- 120 Hz fixed-step authority;
+- aspect-safe 3:2 presentation;
+- no restored horizontal side-wall clamps;
+- world-space camera state;
+- momentum combat and enemy update paths;
+- Comet Dive;
+- Spectrum / Prismatic Flow;
+- Color Eater boss state;
+- focus-neutral Hook cancellation;
+- offline/self-contained contest runtime.
+
+The Chromium smoke test additionally proves:
+
+- the packed entry starts;
+- the Canvas remains aspect-safe;
+- fixed-step simulation advances;
+- generated world extents exceed the viewport substantially in both axes;
+- horizontal movement drives the world-space camera;
+- Hook leases cannot be spammed;
+- blur cannot manufacture release benefits;
+- suspended simulation does not advance;
+- a deterministic high-velocity horn strike defeats a Greyling and recharges Horn authority;
+- generated platform/enemy populations remain nontrivial.
 
 ## Development
 
-Requires Node.js 20 or newer.
-
-Run the source contracts and build the contest package:
-
 ```bash
 npm test
-```
-
-Serve the readable source:
-
-```bash
 npm run dev
 ```
 
-Build and serve the exact packed output:
+To exercise the exact packed artifact:
 
 ```bash
 npm run build
 npm run preview
 ```
 
-Run the browser qualification harness in an environment where the CI Playwright payload is available:
+Browser qualification requires the Playwright payload used by CI:
 
 ```bash
 npm run smoke
 ```
 
-## Qualification strategy
+## Current design checkpoint
 
-The repository uses several deliberately different gates.
+The most important playtest question for this branch is not whether it contains enough content.
 
-### 1. Source contracts
+It is:
 
-`scripts/check.mjs` verifies that core gameplay state and control paths still exist, the entry remains offline/self-contained, focus loss cannot regress to a normal scored Hook release, and render-frame delta time cannot silently regain authority over gameplay simulation.
+> **Does hooking, redirecting, killing at speed, rebounding, and immediately catching the next route feel better than stopping to attack?**
 
-### 2. Deterministic package build
-
-The packer recreates the final ZIP and measures the bytes that the competition actually judges.
-
-### 3. Hard size gate
-
-The build fails above 13,312 bytes. This prevents a polished local build from quietly becoming an invalid competition submission.
-
-### 4. Real-browser smoke
-
-The Chromium harness starts a run through keyboard input, proves the 120 Hz simulation is advancing, proves horizontal movement, primes a deterministic legal prism, proves Hook acquisition/release, rejects a second Shift lease before recharge, and then exercises focus loss while another Hook is live.
-
-The focus test asserts that blur produces:
-
-```text
-active Hook → cancelled Hook
-score       → unchanged
-Spectrum    → unchanged
-velocity    → unchanged
-simSteps    → frozen while suspended
-```
-
-It then restores focus and proves fixed-step simulation authority resumes.
-
-## Design principles
-
-- **Movement remains primary.** The Hook redirects momentum rather than replacing traversal.
-- **Deaths should be legible.** A player should usually understand which line failed.
-- **Restarts should be immediate.** The learning loop lives between attempt and retry.
-- **Skill lives in the player.** There is no permanent movement-stat progression.
-- **World rules stay deterministic.** Failure does not secretly cause adaptive difficulty.
-- **Simulation rules stay frame-rate independent.** Render cadence does not own gravity, Hook timing, or Grey pressure.
-- **The HUD stays small.** The sky and route geometry should own the screen.
-- **Browser state is not gameplay state.** Blur, visibility changes, and focus churn cannot create moves.
-- **Every byte should earn player value.** Shipping constraints are a design instrument, not merely a final compression chore.
-
-## Relationship to Sylvaria: Sequoia
-
-Unicorn Ascending is a mechanical descendant, not a port.
-
-The inherited design lesson is that a traversal tether becomes more interesting when it creates a new line through existing momentum. Unicorn Ascending rebuilds that idea around a tiny deterministic rainbow world, a rising storm, Spectrum timing, and a 13 KB competition budget.
-
-The code, world generator, rendering, scoring, packaging, and qualification harnesses are independent.
-
-## Current development direction
-
-The next experiments should stay empirical and player-facing:
-
-- tune Hook pull and release against repeated playtests;
-- teach the first Hook with a brief in-world visual demonstration;
-- explore moving or damaged rainbow segments;
-- test a compact thundercloud hazard that changes routing without obscuring collision readability;
-- deepen procedural audio without sacrificing control clarity;
-- improve pose animation and impact readability;
-- give a complete seven-color Spectrum a memorable presentation payoff without permanent power creep;
-- evaluate touch controls only if they remain learnable within the byte budget;
-- collect repeatable route/failure evidence before adding more systems.
-
-The target is a tiny game that feels authored even when the climb is procedural: **one readable movement sentence, repeated under increasingly interesting geometry.**
+If yes, this becomes the foundation for encounter grammar, more authored biome structure, a stronger Crown fight, procedural music, and competition polish. If not, combat should be retuned before any additional content is added.

@@ -1,10 +1,11 @@
 import {readFile} from 'node:fs/promises';
 const html=await readFile('src/index.html','utf8'),js=await readFile('src/game.js','utf8');
-const must=[/UNICORN ASCENDING/,/nearestHook/,/hookReady/,/SPECTRUM/,/localStorage\.uaBest/,/window\.UA/,/ShiftLeft/,/ArrowRight/,/function cancelHook\(\)/,/function suspend\(\)/,/visibilitychange/,/suspended/,/STEP=1\/120/,/MAX_STEPS=8/,/while\(acc>=STEP&&n<MAX_STEPS\)/,/fixedHz:120/,/droppedFrames/];for(const x of must)if(!x.test(js))throw Error(`missing gameplay contract ${x}`);
+const must=[/UNICORN ASCENDING/,/PRISMWILD/,/nearestHook/,/hookReady/,/SPECTRUM/,/PRISMATIC FLOW/,/COMET DIVE/,/function combat\(/,/function updateFoes\(/,/COLOR EATER/,/primeCombat/,/camX:cx/,/localStorage\.uaBest/,/window\.UA/,/ShiftLeft/,/ArrowDown/,/function cancelHook\(\)/,/function suspend\(\)/,/visibilitychange/,/suspended/,/S=1\/120/,/MS=8/,/while\(acc>=S&&n<MS\)/,/fixedHz:120/,/droppedFrames/];for(const x of must)if(!x.test(js))throw Error(`missing momentum-world contract ${x}`);
 if(!/width:min\(100vw,150vh\)/.test(html)||!/height:min\(100vh,66\.667vw\)/.test(html))throw Error('canvas must preserve the 960x640 gameplay aspect ratio');
 if(/canvas\{[^}]*width:100vw[^}]*height:100vh/.test(html))throw Error('canvas must not stretch physics geometry to arbitrary viewport ratios');
+if(/p\.x<12|p\.x>W-12/.test(js))throw Error('world-space prototype must not restore side-wall clamps');
 if(/addEventListener\('blur',\(\)=>[^\n]*release\(\)/.test(js))throw Error('focus loss must cancel Horn Hook without a scored release');
 if(/function frame\([^)]*\)\{[^}]*update\(dt\)/.test(js))throw Error('render-frame dt must not directly own gameplay simulation');
 if(/https?:\/\//.test(html+js)||/\bfetch\s*\(|XMLHttpRequest|WebSocket/.test(js))throw Error('contest build must be offline and self-contained');
 if(!/canvas id="c"/.test(html)||!/game\.js/.test(html))throw Error('entry shell contract missing');
-console.log('Unicorn Ascending source contracts OK');
+console.log('Unicorn Ascending momentum-world source contracts OK');
